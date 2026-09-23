@@ -33,7 +33,7 @@ A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development even
 
 ### 2. Clone & Setup Virtual Environment
 ```bash
-git clone https://github.com/<your-username>/john-event-bot.git
+git clone https://github.com/Maximos2004/john-event-bot.git
 cd john-event-bot
 
 python3 -m venv venv
