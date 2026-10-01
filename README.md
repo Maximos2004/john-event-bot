@@ -1,25 +1,21 @@
-# John Event 🇳🇱 • NL Game Dev Radar
+# John Event 🇳🇱 • Dutch Games Industry Radar
 
-A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development events (conferences, awards, meetups, lectures, network lunches) from [Dutch Games Industry](https://www.dutchgamesindustry.nl/calendar) and announces them to Discord with rich embeds.
+A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development events (conferences, awards, meetups, lectures, network lunches) using the official [Dutch Games Industry REST API](https://www.dutchgamesindustry.nl/api/docs.html) and announces them to Discord with rich embeds.
 
 ---
 
 ## Features
 
-- **Automated Event Tracking**: Scrapes upcoming Dutch game development events every 4 hours using `aiohttp` and `BeautifulSoup`.
-- **Strict Event Filtering**: Only tracks real industry events (conferences, meetups, awards, lunches), automatically filtering out standalone game release listings.
-- **Dynamic Price Extraction**:
-  - Direct integration with **WeTicket Storefront API** (e.g. LevelUp Groningen ticket tiers).
-  - Schema.org / JSON-LD parsing for **Eventbrite** events (e.g. Dutch Game Awards, GSNI Lectures).
-  - Regular expression parsing for direct `€` amounts and free community indicators.
+- **Official REST API (Zero Scraping)**: Uses the official Dutch Games Industry API endpoint (`/api/events`) for reliable, compliant, and structured event retrieval.
 - **Rich Dutch Orange Discord Embeds (`#EB5E28`)**:
-  - Event title linked to official source page.
+  - Event title and official registration/event link.
   - Native **Discord Timestamps** `<t:timestamp:F> (<t:timestamp:R>)` with localized time and dynamic relative countdown.
   - Clickable **Google Maps** links for physical venue addresses.
-  - Bold exact ticket prices (`**FREE**` or `**€XX.XX**`).
-- **Duplicate Prevention**: State is persisted per channel in `posted_events.json` to prevent re-posting across reboots.
+  - Official event image thumbnails from DGI media storage.
+  - Categorization badges (e.g. `Meetup`, `Networking`, `Conference`, `Showcase`).
+- **Self-Cleaning Persistence**: Tracks posted events per channel with their expiration timestamps in `posted_events.json`. Completed/past events are automatically pruned so the state file never expands infinitely.
 - **Multi-Channel & Instant Setup**:
-  - Supports multiple target channels.
+  - Supports multiple target channels via comma-separated channel IDs.
   - Listens for `on_guild_join` to immediately publish the events calendar when added to a new server.
   - Admin command `!checkevents` and slash command `/checkevents` guarded by `Manage Messages` permission.
 
@@ -50,7 +46,6 @@ Edit `.env`:
 ```ini
 DISCORD_TOKEN=your_bot_token_here
 CHANNEL_ID=your_discord_channel_id_here
-CALENDAR_URL=https://www.dutchgamesindustry.nl/calendar
 CHECK_INTERVAL_HOURS=4
 ```
 
