@@ -121,10 +121,14 @@ async def fetch_upcoming_events() -> list[dict]:
                     return []
                 raw_events = await resp.json()
 
+        today_date = datetime.now(AMS_TZ).date()
         events = []
         for item in raw_events:
             ev = parse_dgi_event(item)
-            if ev and ev["expiry_timestamp"] >= now_ts:
+            if not ev:
+                continue
+            ev_start_date = datetime.fromtimestamp(ev["start_timestamp"], tz=AMS_TZ).date()
+            if ev_start_date >= today_date and ev["expiry_timestamp"] >= now_ts:
                 events.append(ev)
 
         # Sort chronologically
