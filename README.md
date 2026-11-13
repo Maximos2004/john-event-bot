@@ -35,7 +35,13 @@ A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development even
 - Python 3.11+
 - Virtual environment (`venv`)
 
-### 2. Clone & Setup Virtual Environment
+### 2. Create the Discord Bot
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**.
+2. Open the **Bot** tab and click **Reset Token** to get your bot token. Keep it secret; it goes in `.env` (step 4).
+3. On the same tab, under **Privileged Gateway Intents**, enable **Message Content Intent** and save.
+   Without it the bot fails to start with `PrivilegedIntentsRequired`.
+
+### 3. Clone & Setup Virtual Environment
 ```bash
 git clone https://github.com/Maximos2004/john-event-bot.git
 cd john-event-bot
@@ -45,8 +51,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Configuration
-Copy `.env.example` to `.env` and fill in your Discord credentials:
+### 4. Configuration
+Copy `.env.example` to `.env` and fill in your bot token:
 ```bash
 cp .env.example .env
 ```
@@ -56,12 +62,20 @@ DISCORD_TOKEN=your_bot_token_here
 CHANNEL_ID=
 CHECK_INTERVAL_HOURS=4
 ```
-Then, in Discord, run `/setup channel:#your-channel` in each server. (`CHANNEL_ID` is optional.)
+`CHANNEL_ID` is optional; leave it empty and use `/setup` instead.
 
-### 4. Run Locally
+### 5. Run Locally
 ```bash
 python bot.py
 ```
+On startup the bot logs `Logged in as ...`. If it is not in any server yet, it also logs an invite link.
+
+### 6. Invite the Bot to Your Server
+Open this link, replacing `YOUR_CLIENT_ID` with the **Application ID** from the portal's **General Information** tab:
+```
+https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=277025507328&scope=bot%20applications.commands
+```
+Then, in Discord, run `/setup channel:#your-channel` in each server. Slash commands can take a moment to appear; reload Discord (Ctrl+R) if they don't show up.
 
 ---
 
@@ -69,17 +83,18 @@ python bot.py
 
 A systemd service unit template is included in `johnevent.service`.
 
-1. Copy the unit file to `/etc/systemd/system/`:
+1. Edit `johnevent.service` and replace `youruser` and `/home/youruser/john-event-bot` with the Linux user and folder the bot runs from.
+2. Copy the unit file to `/etc/systemd/system/`:
    ```bash
    sudo cp johnevent.service /etc/systemd/system/johnevent.service
    ```
-2. Reload systemd, enable, and start the service:
+3. Reload systemd, enable, and start the service:
    ```bash
    sudo systemctl daemon-reload
    sudo systemctl enable johnevent.service
    sudo systemctl start johnevent.service
    ```
-3. Check status and logs:
+4. Check status and logs:
    ```bash
    sudo systemctl status johnevent.service
    sudo journalctl -u johnevent.service -f
@@ -88,11 +103,14 @@ A systemd service unit template is included in `johnevent.service`.
 ---
 
 ## Discord Bot Permissions
-When inviting the bot, it only requires minimal permissions scoped to the target channel:
-- **Send Messages**
+The invite link above requests only these permissions:
+- **Send Messages** / **Send Messages in Threads**
 - **Embed Links**
+- **Attach Files**
 - **Read Message History**
 - **Use Application Commands**
+
+In the channel picked with `/setup`, the bot needs View Channel, Send Messages, Embed Links and Read Message History; `/setup` checks these and tells you what is missing.
 
 ---
 

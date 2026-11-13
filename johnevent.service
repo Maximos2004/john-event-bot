@@ -5,13 +5,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=ubuntu
-Group=ubuntu
-WorkingDirectory=/home/ubuntu/john-event-bot
-ExecStart=/home/ubuntu/john-event-bot/venv/bin/python -u bot.py
+User=youruser
+Group=youruser
+WorkingDirectory=/home/youruser/john-event-bot
+ExecStart=/home/youruser/john-event-bot/venv/bin/python -u bot.py
 Restart=always
 RestartSec=10
-EnvironmentFile=/home/ubuntu/john-event-bot/.env
+EnvironmentFile=/home/youruser/john-event-bot/.env
 StandardOutput=journal
 StandardError=journal
 
