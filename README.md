@@ -35,12 +35,12 @@ A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development even
 ### 1. Prerequisites
 - Python 3.11+
 - Virtual environment (`venv`)
+- Node.js + PM2 for 24/7 hosting (see below)
 
 ### 2. Create the Discord Bot
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**.
 2. Open the **Bot** tab and click **Reset Token** to get your bot token. Keep it secret; it goes in `.env` (step 4).
-3. On the same tab, under **Privileged Gateway Intents**, enable **Message Content Intent** and save.
-   Without it the bot fails to start with `PrivilegedIntentsRequired`.
+3. No **Privileged Gateway Intents** are needed; you can leave them all off.
 
 ### 3. Clone & Setup Virtual Environment
 ```bash
@@ -80,26 +80,36 @@ Then, in Discord, run `/setup channel:#your-channel` in each server. Slash comma
 
 ---
 
-## 24/7 Deployment with systemd
+## 24/7 Deployment with PM2
 
-A systemd service unit template is included in `johnevent.service`.
+[PM2](https://pm2.keymetrics.io/) keeps the bot running, restarts it if it crashes, and starts it again after a reboot. The config is in `ecosystem.config.js` and uses the Python from the project's `venv`.
 
-1. Edit `johnevent.service` and replace `youruser` and `/home/youruser/john-event-bot` with the Linux user and folder the bot runs from.
-2. Copy the unit file to `/etc/systemd/system/`:
+1. Install Node.js (LTS), then PM2:
    ```bash
-   sudo cp johnevent.service /etc/systemd/system/johnevent.service
+   npm install -g pm2
    ```
-3. Reload systemd, enable, and start the service:
+2. From the project folder (after steps 1–4 above), start the bot:
    ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable johnevent.service
-   sudo systemctl start johnevent.service
+   pm2 start ecosystem.config.js
    ```
-4. Check status and logs:
+3. Make it start again after a reboot:
    ```bash
-   sudo systemctl status johnevent.service
-   sudo journalctl -u johnevent.service -f
+   pm2 startup   # prints a command; run that command (it may need sudo)
+   pm2 save      # remembers the currently running apps
    ```
+4. Everyday commands:
+   ```bash
+   pm2 status                    # is it running?
+   pm2 logs john-event-bot       # live logs
+   pm2 restart john-event-bot    # after pulling updates
+   pm2 stop john-event-bot
+   ```
+5. Optional: keep log files from growing forever:
+   ```bash
+   pm2 install pm2-logrotate
+   ```
+
+> On Windows, `pm2 startup` isn't supported; use [pm2-installer](https://github.com/jessety/pm2-installer) or Task Scheduler to start PM2 at boot.
 
 ---
 
