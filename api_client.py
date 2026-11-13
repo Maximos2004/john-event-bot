@@ -26,6 +26,11 @@ def clean_html_text(raw_html: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
+def end_of_day_ts(ts: int) -> int:
+    """Returns the timestamp of 23:59 (Amsterdam time) on the day of `ts`."""
+    d = datetime.fromtimestamp(ts, tz=AMS_TZ)
+    return int(d.replace(hour=23, minute=59, second=0, microsecond=0).timestamp())
+
 def parse_dgi_event(item: dict) -> dict | None:
     """Parses a raw DGI API event item into a structured event dict."""
     event_id = item.get("id")
@@ -49,18 +54,18 @@ def parse_dgi_event(item: dict) -> dict | None:
         logger.warning(f"Error parsing start date/time '{start_date_str} {start_time_str}' for event '{title}': {e}")
         return None
 
-    # Parse end datetime or calculate expiry
-    if end_date_str:
-        try:
-            end_parts = [int(p) for p in end_date_str.split("-")]
-            e_time = [int(p) for p in (end_time_str or "23:59").split(":")[:2]]
-            end_dt = datetime(end_parts[0], end_parts[1], end_parts[2], e_time[0], e_time[1], tzinfo=AMS_TZ)
+    # Parse end datetime. The API often gives an endTime without an endDate
+    # (same-day events), so the end date defaults to the start date.
+    # Without any end info, the event ends at 23:59 on its start day.
+    expiry_ts = end_of_day_ts(start_ts)
+    try:
+        end_parts = [int(p) for p in end_date_str.split("-")] if end_date_str else start_parts
+        e_time = [int(p) for p in (end_time_str or "23:59").split(":")[:2]]
+        end_dt = datetime(end_parts[0], end_parts[1], end_parts[2], e_time[0], e_time[1], tzinfo=AMS_TZ)
+        if int(end_dt.timestamp()) > start_ts:
             expiry_ts = int(end_dt.timestamp())
-        except Exception:
-            expiry_ts = start_ts + (24 * 3600)
-    else:
-        # Default expiry: 24h after start time
-        expiry_ts = start_ts + (24 * 3600)
+    except Exception as e:
+        logger.warning(f"Error parsing end date/time '{end_date_str} {end_time_str}' for event '{title}': {e}")
 
     # Address & Maps
     address = (item.get("address") or "").strip()

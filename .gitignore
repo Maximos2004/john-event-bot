@@ -27,6 +27,7 @@ wheels/
 
 # Local state & persistence
 posted_events.json
+guild_config.json
 *.tmp
 
 # IDE / OS
