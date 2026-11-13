@@ -1,4 +1,6 @@
-discord.py>=2.3.0
-aiohttp>=3.9.0
-python-dotenv>=1.0.0
-tzdata>=2024.1; sys_platform == "win32"
+# Pinned to the latest stable releases (Nov 2026). Bump deliberately after testing.
+discord.py==2.7.1
+aiohttp==3.14.5
+python-dotenv==1.2.4
+# Windows has no system timezone database (needed for Europe/Amsterdam)
+tzdata==2026.6; sys_platform == "win32"

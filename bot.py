@@ -3,6 +3,7 @@ import re
 import sys
 import json
 import asyncio
+import hashlib
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import tasks
 
 from api_client import fetch_upcoming_events, end_of_day_ts
 
@@ -193,8 +194,38 @@ def upsert_event_record(channel_id: int, event_id: str, **fields):
 FOOTER_TEXT = "John Event • Dutch Games Industry Radar"
 DATE_FIELD_NAME = "📅 Date & Time"
 
+# Discord embed limits: https://discord.com/developers/docs/resources/message#embed-object-embed-limits
+EMBED_TITLE_MAX = 256
+EMBED_DESCRIPTION_MAX = 4096
+EMBED_FIELD_NAME_MAX = 256
+EMBED_FIELD_VALUE_MAX = 1024
+EMBED_FOOTER_MAX = 2048
+EMBED_TOTAL_MAX = 6000
+
+def clip(text: str | None, limit: int) -> str:
+    """Truncates text to `limit` characters, ending with an ellipsis when cut."""
+    text = text or ""
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+def enforce_embed_limits(embed: discord.Embed) -> discord.Embed:
+    """Clips every text part of an embed to Discord's limits, including the 6000-char total."""
+    if embed.title:
+        embed.title = clip(embed.title, EMBED_TITLE_MAX)
+    if embed.description:
+        embed.description = clip(embed.description, EMBED_DESCRIPTION_MAX)
+    for i, f in enumerate(embed.fields):
+        embed.set_field_at(i, name=clip(f.name, EMBED_FIELD_NAME_MAX) or "​",
+                           value=clip(f.value, EMBED_FIELD_VALUE_MAX) or "​", inline=f.inline)
+    if embed.footer and embed.footer.text:
+        embed.set_footer(text=clip(embed.footer.text, EMBED_FOOTER_MAX), icon_url=embed.footer.icon_url)
+    # The description is the only part that can realistically push past the total limit
+    overflow = len(embed) - EMBED_TOTAL_MAX
+    if overflow > 0 and embed.description:
+        embed.description = clip(embed.description, max(1, len(embed.description) - overflow - 1))
+    return embed
+
 def create_event_embed(event: dict) -> discord.Embed:
-    """Builds a rich Dutch orange embed for a Dutch game dev event."""
+    """Builds a rich embed for a Dutch game dev event."""
     embed = discord.Embed(
         title=event.get("title", "Upcoming Game Dev Event"),
         url=event.get("url"),
@@ -213,7 +244,7 @@ def create_event_embed(event: dict) -> discord.Embed:
     # 2. Location (Clickable Google Maps link when address available)
     loc_name = event.get("address") or "Netherlands"
     map_url = event.get("map_url")
-    if map_url:
+    if map_url and len(loc_name) + len(map_url) + 4 <= EMBED_FIELD_VALUE_MAX:
         loc_str = f"[{loc_name}]({map_url})"
     elif loc_name.lower().startswith("online"):
         loc_str = "🌐 Online"
@@ -224,7 +255,7 @@ def create_event_embed(event: dict) -> discord.Embed:
     # 3. Categories / Tags
     categories = event.get("categories") or []
     if categories:
-        cat_str = " • ".join(categories)
+        cat_str = " • ".join(str(c) for c in categories)
         embed.add_field(name="🏷️ Categories", value=cat_str, inline=True)
 
     # 4. Direct link to official event page
@@ -237,7 +268,7 @@ def create_event_embed(event: dict) -> discord.Embed:
         embed.set_thumbnail(url=event["image"])
 
     embed.set_footer(text=FOOTER_TEXT)
-    return embed
+    return enforce_embed_limits(embed)
 
 # ==============================================================================
 # Event Status (Upcoming → Happening now → Concluded)
@@ -288,21 +319,62 @@ def format_date_value(status: str, start_ts: int | None, expiry_ts: int) -> str:
 def apply_status(embed: discord.Embed, status: str, start_ts: int | None, expiry_ts: int) -> discord.Embed:
     """Restyles an event embed (new or already posted) for the given status, in place."""
     title = TITLE_PREFIXES.get(status, "") + _strip_title_prefix(embed.title or "Game Dev Event")
-    embed.title = title[:256]
+    embed.title = title
     embed.colour = STATUS_COLORS[status]
     for i, field in enumerate(embed.fields):
         if field.name == DATE_FIELD_NAME:
             embed.set_field_at(i, name=DATE_FIELD_NAME, value=format_date_value(status, start_ts, expiry_ts), inline=field.inline)
             break
-    return embed
+    return enforce_embed_limits(embed)
 
 # ==============================================================================
 # Discord Bot Setup & Event Loops
 # ==============================================================================
-intents = discord.Intents.default()
-intents.message_content = True
+COMMAND_SYNC_FILE = BASE_DIR / ".command_sync_hash"
 
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+def _command_tree_hash(tree: app_commands.CommandTree, application_id: int | None) -> str:
+    """Stable hash of all slash command definitions (plus the app ID)."""
+    payload = {
+        "app": application_id,
+        "commands": sorted((cmd.to_dict(tree) for cmd in tree.get_commands()), key=lambda c: c["name"]),
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+async def sync_commands_if_changed(client: "JohnEventBot"):
+    """
+    Registers slash commands with Discord only when their definitions changed since the
+    last successful sync, instead of on every start/reconnect (avoids sync rate limits).
+    """
+    current = _command_tree_hash(client.tree, client.application_id)
+    try:
+        previous = COMMAND_SYNC_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        previous = ""
+    if current == previous:
+        logger.info("Slash commands unchanged since last sync; skipping sync.")
+        return
+    try:
+        synced = await client.tree.sync()
+        COMMAND_SYNC_FILE.write_text(current, encoding="utf-8")
+        logger.info(f"Synced {len(synced)} slash command(s) globally.")
+    except Exception as e:
+        logger.warning(f"Failed to sync slash commands: {e}")
+
+class JohnEventBot(discord.Client):
+    """Slash-command-only client. Only the `guilds` intent is needed: no message content
+    or member data is read (the bot's own messages are always readable)."""
+
+    def __init__(self):
+        intents = discord.Intents.none()
+        intents.guilds = True
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+
+    async def setup_hook(self):
+        # Runs once per process (not on reconnects)
+        await sync_commands_if_changed(self)
+
+bot = JohnEventBot()
 api_lock = asyncio.Lock()
 
 async def check_and_post_events(target_channel_id: int | None = None) -> dict[int, int]:
@@ -501,12 +573,6 @@ async def on_ready():
     else:
         for g in bot.guilds:
             logger.info(f"Connected to guild: '{g.name}' (ID: {g.id})")
-    try:
-        synced = await bot.tree.sync()
-        logger.info(f"Synced {len(synced)} application commands globally.")
-    except Exception as e:
-        logger.warning(f"Failed to sync slash commands: {e}")
-
     global _backfill_done
     if not _backfill_done:
         _backfill_done = True  # on_ready can fire again on reconnects; only try once per run
@@ -609,28 +675,9 @@ async def slash_unsetup(interaction: discord.Interaction):
     logger.info(f"Guild '{interaction.guild.name}' ({interaction.guild.id}) removed its events channel.")
     await interaction.response.send_message("🛑 I'll stop posting events in this server. Use `/setup` to turn it back on.", ephemeral=True)
 
-# Bot Commands
-@bot.command(name="checkevents")
-@commands.has_permissions(manage_messages=True)
-async def cmd_checkevents(ctx: commands.Context):
-    """Admin command to manually trigger an immediate calendar check."""
-    target_id = _resolve_checkevents_target(ctx.guild, ctx.channel.id)
-    if not target_id:
-        await ctx.send(NOT_SETUP_MSG)
-        return
-    status_msg = await ctx.send("🔍 Checking DGI API for upcoming game development events...")
-    try:
-        results = await check_and_post_events(target_channel_id=target_id)
-        total = sum(results.values())
-        if total > 0:
-            await status_msg.edit(content=f"✅ Check complete! Posted **{total}** new event(s).")
-        else:
-            await status_msg.edit(content="✨ All events are already up to date!")
-    except Exception as e:
-        logger.error(f"Error in !checkevents command: {e}")
-        await status_msg.edit(content=f"❌ Failed to check events: {e}")
-
 @bot.tree.command(name="checkevents", description="Check for new Dutch game development events now")
+@app_commands.default_permissions(manage_messages=True)
+@app_commands.guild_only()
 async def slash_checkevents(interaction: discord.Interaction):
     """Slash command to manually trigger an immediate calendar check."""
     if not interaction.user.guild_permissions.manage_messages:

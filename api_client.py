@@ -11,6 +11,16 @@ logger = logging.getLogger("john_event.api")
 DGI_EVENTS_API = "https://www.dutchgamesindustry.nl/api/events"
 AMS_TZ = zoneinfo.ZoneInfo("Europe/Amsterdam")
 
+# Identify honestly to the DGI API instead of posing as a browser.
+USER_AGENT = "JohnEventBot/2.1 (Discord bot posting Dutch games industry events)"
+
+# The DGI API spec (/api/openapi.yaml) does not document the event `status` field.
+# Every event /api/events currently returns is "pending", including clearly published
+# ones, so "pending" can't mean "awaiting review". We post pending/published events,
+# skip statuses that clearly mean the event should not be shown, and log anything new.
+KNOWN_STATUSES = {"pending", "published", "approved", "active", "confirmed"}
+EXCLUDED_STATUSES = {"rejected", "declined", "cancelled", "canceled", "draft", "deleted", "hidden", "archived"}
+
 def clean_html_text(raw_html: str) -> str:
     """Cleans raw HTML description text into readable plaintext/markdown."""
     if not raw_html:
@@ -112,7 +122,7 @@ async def fetch_upcoming_events() -> list[dict]:
     Filters out past events and sorts upcoming events chronologically.
     """
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JohnEventBot/2.0",
+        "User-Agent": USER_AGENT,
         "Accept": "application/json",
     }
     timeout = aiohttp.ClientTimeout(total=15)
@@ -129,6 +139,12 @@ async def fetch_upcoming_events() -> list[dict]:
         today_date = datetime.now(AMS_TZ).date()
         events = []
         for item in raw_events:
+            status = str(item.get("status") or "").strip().lower()
+            if status in EXCLUDED_STATUSES:
+                logger.info(f"Skipping event '{item.get('name')}' with status '{status}'.")
+                continue
+            if status and status not in KNOWN_STATUSES:
+                logger.warning(f"Event '{item.get('name')}' has unrecognised status '{status}'; posting it anyway.")
             ev = parse_dgi_event(item)
             if not ev:
                 continue

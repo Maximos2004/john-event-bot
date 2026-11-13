@@ -6,7 +6,7 @@ A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development even
 
 ## Features
 
-- **Official REST API (Zero Scraping)**: Uses the official Dutch Games Industry API endpoint (`/api/events`) for reliable, compliant, and structured event retrieval.
+- **Official REST API (Zero Scraping)**: Uses the official Dutch Games Industry API endpoint (`/api/events`) for reliable, compliant, and structured event retrieval. Requests identify as `JohnEventBot` in the User-Agent. Events with a status that clearly means "don't show" (e.g. `rejected`, `cancelled`, `draft`) are skipped.
 - **Rich Colour-Coded Discord Embeds** (green upcoming, orange happening now, red concluded):
   - Event title and official registration/event link.
   - Native **Discord Timestamps** `<t:timestamp:F> (<t:timestamp:R>)` with localized time and dynamic relative countdown.
@@ -24,7 +24,8 @@ A lightweight, 24/7 Discord bot that tracks upcoming Dutch game development even
   - `/setup channel:#channel` (requires `Manage Server`) picks where the bot posts in that server, checks the bot can post there, and immediately publishes upcoming events. Saved in `guild_config.json`.
   - `/unsetup` stops posting in that server.
   - When added to a new server, the bot greets the system channel with setup instructions.
-  - Admin command `!checkevents` and slash command `/checkevents` (requires `Manage Messages`) post any new events to the server's configured channel.
+  - `/checkevents` (requires `Manage Messages`, servers only) posts any new events to the server's configured channel.
+  - Slash commands only, with just the `guilds` gateway intent (no privileged intents). Commands are re-registered with Discord only when their definitions change.
   - Optional static channel IDs via `CHANNEL_ID` in `.env` still work as a fallback.
 
 ---

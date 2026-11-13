@@ -28,6 +28,7 @@ wheels/
 # Local state & persistence
 posted_events.json
 guild_config.json
+.command_sync_hash
 *.tmp
 
 # IDE / OS
